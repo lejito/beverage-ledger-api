@@ -14,8 +14,10 @@ La fuente de verdad del inventario es un **ledger inmutable** de líneas de movi
 
 | | Repositorio | Stack |
 |---|---|---|
-| Backend | `beverage-ledger-api` (este) → `C:\VisualProjects\beverage-ledger-api` | NestJS 11, Prisma 7, Supabase Postgres |
-| Frontend | [`beverage-ledger`](https://github.com/T-cordoba/beverage-ledger) → `C:\VisualProjects\beverage-ledger` | Next.js 15, TypeScript, Tailwind |
+| Backend | `beverage-ledger-api` (este) | NestJS 11, Prisma 7, Supabase Postgres |
+| Frontend | [`beverage-ledger`](https://github.com/lejito/beverage-ledger), clonado como carpeta hermana de este | Next.js 15, TypeScript, Tailwind |
+
+La ruta local de los clones cambia según la máquina de cada colaborador: no asumas una absoluta.
 
 Nació de una reescritura: el proyecto original era una sola app de Next.js con dos archivos de SQL sin validación, sin autenticación y sin esquema versionado. Ver §9.
 
@@ -33,7 +35,7 @@ Nació de una reescritura: el proyecto original era una sola app de Next.js con 
 
 **Desplegado y funcionando** en Render: `https://beverage-ledger-api.onrender.com`. Ver §4.
 
-Plan completo en el repo del front: `C:\Users\Tomas\.claude\plans\ok-voy-a-hacerle-tender-sprout.md`
+El plan completo de fases vive fuera del repositorio, en la máquina de quien lo escribió; no cuentes con poder leerlo.
 
 ### Dónde quedó la Fase 1
 
@@ -68,19 +70,23 @@ Todo verificado contra Supabase, no solo compilado. Endpoints disponibles:
 
 | Método | Ruta | Quién |
 |---|---|---|
-| `POST` | `/auth/register` | público |
 | `POST` | `/auth/login` | público |
 | `POST` | `/auth/refresh` | cookie de refresh |
 | `POST` | `/auth/logout` | autenticado |
 | `GET` | `/auth/me` | autenticado |
 | `GET` | `/auth/google` · `/auth/google/callback` | público |
 | `PATCH` | `/users/me` · `PUT /users/me/password` | autenticado |
-| `GET` `POST` | `/users` | `user:manage` |
+| `GET` | `/users` | `user:manage` |
 | `GET` `PATCH` | `/users/:id` | `user:manage` |
+| `GET` `POST` `DELETE` | `/invitations` (+ `/:id`) | `user:manage` |
+| `POST` | `/invitations/lookup` · `/invitations/accept` | público, token en el body |
 
 Decisiones que quedaron tomadas al construirlo:
 
-- **El registro público entra a la organización por defecto como `OPERATOR`** (`DEFAULT_ORGANIZATION_SLUG`). El alta de organizaciones sigue aplazada; un `ORG_ADMIN` promueve desde el panel.
+- **No hay registro abierto: se entra solo por invitación.** El `POST /auth/register` original y el `POST /users` con contraseña se eliminaron. Un `ORG_ADMIN` emite una invitación y copia el enlace (no hay envío de correo); el invitado la previsualiza y la acepta. El token se guarda hasheado como un refresh token y viaja en el body, no en la ruta, para no acabar en logs ni en el `Referer`. Aceptar crea el miembro y gasta la invitación en una transacción con compare-and-set. Emitir (`InvitationsAdminService`, tras permiso) y canjear (`InvitationsService`, público) viven en services separados a propósito.
+- **Google solo se vincula a una cuenta que ya existe**; un email desconocido ya no crea cuenta.
+- **Rate limit global con `ThrottlerGuard`** (`THROTTLE_TTL_SECONDS`, `THROTTLE_LIMIT`) y uno más estricto, `AUTH_THROTTLE` en `auth.throttle.ts`, sobre login, refresh y las rutas públicas de invitación. Va en código y no en el entorno porque `@Throttle` es metadata de decorador y se evalúa antes de que exista `ConfigService`.
+- **Bloqueo de cuenta por intentos fallidos** en `CredentialsService` (`LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES`). Email inexistente, contraseña errónea y cuenta bloqueada responden igual.
 - **La autenticación es global**: `JwtAuthGuard` está en `APP_GUARD`, así que una ruta nueva nace protegida y hay que marcarla `@Public()` para abrirla. Olvidar el decorador cierra, no expone.
 - **`PermissionsGuard`, no `RolesGuard`** — lee `Permission`, nunca un rol, alimentado por `common/permissions/permissions.config.ts`. Es un no-op en rutas sin `@RequirePermissions()`.
 - **La estrategia de Google se registra solo si hay credenciales.** Sin ellas la API arranca igual y las rutas de Google responden 501. `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `GOOGLE_CALLBACK_URL` se validan como conjunto: las tres o ninguna.
@@ -132,7 +138,9 @@ Decisiones que quedaron tomadas al construirlo:
 - **Credenciales de Google OAuth** sin crear en Google Cloud Console (ver arriba). Nada más depende de ello.
 - **La estructura del documento PDF queda pendiente de revisión.** El layout actual es una migración del que había en el front, con las columnas reducidas a lo que el ledger realmente guarda: nombre y marca del snapshot, cantidad, unidad y unidades base. El resto de los campos del original (origen, ABV, añejamiento, subcategoría) vivían en el blob JSON denormalizado y ahora están en `products`, no en la línea del movimiento — meterlos en el documento significa decidir si se leen del producto actual (y entonces un reimpreso viejo deja de ser fiel) o si el snapshot debe crecer. **Es una decisión de producto, no de código, y se aborda en una fase posterior** junto con la revisión visual del layout.
 - **El PDF usa las fuentes estándar**, que son WinAnsi: 218 caracteres, Windows-1252. Cubre los acentos del español, la raya y las comillas curvas, y `drawText` **lanza excepción** con cualquier cosa fuera de ese juego. `movement-pdf.service.ts` le pregunta a la fuente qué soporta y solo pliega lo que de verdad no cabe (a su letra base, o a `?` como último recurso). El arreglo definitivo es embeber una fuente Unicode, a costa de versionar un archivo de fuente.
-- **El proceso de V&V lo diseña el usuario**, así que no añadas herramienta de pruebas nueva sin que te la pidan. Lo que ya existe: **Vitest** con las pruebas de caminos en `test/` (`pnpm test`, `pnpm test:coverage`) y un workflow de **GitHub Actions** que publica el coverage en SonarCloud. Los tests corren con dobles hechos a mano —ni `@nestjs/testing` ni base de datos—, así que son deterministas y no necesitan red. El coverage está acotado a los archivos que alguna prueba ejecuta: `coverage.include` en `vitest.config.mts` los lista y `sonar.coverage.exclusions` escribe el complemento, y las dos listas se mueven juntas.
+- **El proceso de V&V lo diseña el usuario**, así que no añadas herramienta de pruebas nueva sin que te la pidan. Lo que ya existe: **Vitest** con las pruebas de caminos en `test/` (`pnpm test`, `pnpm test:coverage`) y un workflow de **GitHub Actions** que publica el coverage en SonarCloud. Los tests corren con dobles hechos a mano —ni `@nestjs/testing` ni base de datos—, así que son deterministas y no necesitan red. El coverage está acotado a los archivos que alguna prueba ejecuta: `coverage.include` en `vitest.config.mts` los lista y `sonar.coverage.exclusions` escribe el complemento, y las dos listas se mueven juntas. Un archivo nuevo bajo prueba se añade a **las dos**, porque SWC borra los `import type` y un módulo que el test solo importa como tipo no aparecería.
+- **Convención de los tests**: un archivo por requisito, `rf-NN-back-<caso>.test.ts`, y un `it` por camino de la prueba de caja blanca (`'Camino 1 - …'`). Los nombres de `describe`/`it` y las variables locales de los tests van en español, excepción aceptada a §7 porque son la traza hacia el documento de V&V. Los services se instancian con `new` y repositorios `vi.fn()` casteados con `as unknown as`. Varios tests importan enums del cliente generado como valores: sin `pnpm db:generate` la suite ni carga.
+- **`pnpm test:clean`** (`scripts/clean-test-movements.ts`) borra de la base los borradores con nota `vitest` que dejaba una versión anterior de las pruebas, cuando sí tocaban la base. Hoy ninguna prueba la toca.
 - **Las pantallas nuevas del front no las ha recorrido nadie.** El backend se ejerció de punta a punta contra una base real —ciclo de traspaso, anulación, matriz de reglas e invariante en cero descuadres— y el backfill se verificó sobre los datos de Supabase, pero el CRUD de bodegas, la captura de traspaso y el tope del picker solo tienen typecheck, lint y build.
 
 ---
@@ -149,9 +157,14 @@ pnpm start:dev        # desarrollo con watch, en :3001
 pnpm build            # compila a dist/
 pnpm start:prod       # sirve el build
 
-pnpm lint             # ESLint
+pnpm lint             # ESLint (lint:fix para corregir)
 pnpm typecheck        # tsc --noEmit
-pnpm format           # Prettier
+pnpm format           # Prettier (format:check en modo verificación)
+
+pnpm test                                   # Vitest, toda la suite
+pnpm test test/rf-23-back-resolve-location  # un archivo (filtro por ruta)
+pnpm test -t "Camino 2"                     # por nombre de it/describe
+pnpm test:coverage                          # con coverage, como en CI
 
 pnpm db:migrate       # prisma migrate dev
 pnpm db:generate      # regenera el cliente en src/generated/prisma
@@ -216,6 +229,21 @@ Detalles que costaron un despliegue fallido cada uno:
 
 `SEED_ADMIN_PASSWORD` **no** está en Render: la lee el seed, no la API. La credencial del admin vive como hash argon2 en `users.password_hash`.
 
+### CI con Jenkins
+
+Además del workflow de GitHub Actions, el pipeline está en el `Jenkinsfile` de la raíz. **El servidor no vive en este repo**: es una instancia compartida con el front, definida en la carpeta `jenkins/beverage-ledger/`, hermana de los clones (sin versionar). Allí están la imagen con Node 22 y corepack, los plugins, un **SonarQube local** con su Postgres (http://localhost:9000) y toda la configuración como código (`casc.yaml`): usuario admin, credenciales y los dos jobs, `beverage-ledger-api` y `beverage-ledger`. No hay asistente de instalación; lo que se cambie en la UI se pierde al reiniciar.
+
+```bash
+cd ../jenkins/beverage-ledger
+cp .env.example .env          # admin, SONAR_TOKEN y los datos del front
+docker compose up -d --build  # Jenkins en :8080, SonarQube en :9000
+```
+
+- **El stage de análisis va contra el SonarQube local, no contra SonarCloud**: el servidor sale de `SONAR_HOST_URL`, que pone Jenkins, y el `Jenkinsfile` no nombra ninguno. GitHub Actions sigue analizando en SonarCloud con `sonar-project.properties`, cuyo `sonar.organization` el SonarQube local ignora.
+- **El job lee el `Jenkinsfile` de GitHub**, no del disco: un cambio al pipeline no corre hasta que se empuja. Consulta el repo cada 5 minutos, porque un Jenkins en localhost no recibe webhooks. El repo es privado: Jenkins clona con la credencial `github`, un token de solo lectura que va en `GITHUB_TOKEN` del `.env`.
+- **El workspace se borra al terminar cada build** (`cleanWs`): un `dist/` viejo hace que Vitest recoja archivos que parecen tests. El store de pnpm vive en el volumen de Jenkins, así que reinstalar sale barato.
+- Las URLs de base de datos del pipeline son las mismas de relleno que usa GitHub Actions: nada en CI se conecta.
+
 ---
 
 ## 5. Arquitectura
@@ -243,6 +271,7 @@ src/
   infra/prisma/        PrismaService y PrismaModule
   modules/             un módulo por dominio
     auth/  users/  organizations/  audit/
+    invitations/       emitir (admin) y canjear (público) invitaciones
     catalog/           products · categories · brands
     inventory/         movements · stock · kardex · locations
     reports/           agregación en SQL
@@ -274,7 +303,7 @@ El producto apunta a SaaS a futuro. Hoy solo hay una organización, pero el aisl
 
 **Ningún service escribe `organizationId` a mano en una consulta.** Basta un olvido para filtrar datos de otro cliente.
 
-Lo que todavía NO existe y llega cuando el SaaS sea concreto: alta de organizaciones, facturación, invitaciones, subdominios, catálogo maestro con overrides.
+Lo que todavía NO existe y llega cuando el SaaS sea concreto: alta de organizaciones, facturación, subdominios, catálogo maestro con overrides. Las invitaciones ya existen, pero siempre a la organización de quien invita.
 
 ### Modelo de datos
 

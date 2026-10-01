@@ -4,7 +4,7 @@ API de gestión de inventario de licores para hostelería. Registra movimientos 
 
 Construida con **NestJS 11**, **Prisma 7** y **PostgreSQL** (Supabase).
 
-> Este repositorio es solo el backend. El frontend está en [`beverage-ledger`](https://github.com/T-cordoba/beverage-ledger).
+> Este repositorio es solo el backend. El frontend está en [`beverage-ledger`](https://github.com/lejito/beverage-ledger).
 
 ---
 
@@ -31,7 +31,7 @@ El reparto sigue el principio de **segregación de funciones**: quien despacha m
 Requisitos: Node.js 20.19+, Docker (opcional, para la base local).
 
 ```bash
-git clone https://github.com/T-cordoba/beverage-ledger-api.git
+git clone https://github.com/lejito/beverage-ledger-api.git
 cd beverage-ledger-api
 pnpm install
 
