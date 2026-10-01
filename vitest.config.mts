@@ -12,10 +12,12 @@ export default defineConfig({
       // only imports as a type never loads and would be missing from the report.
       // Mirrored by sonar.coverage.exclusions in sonar-project.properties.
       include: [
+        'src/modules/audit/audit.service.ts',
         'src/modules/audit/repositories/audit.repository.ts',
         'src/modules/auth/credentials.service.ts',
         'src/modules/auth/user.mapper.ts',
         'src/modules/catalog/products-admin.service.ts',
+        'src/modules/catalog/products.service.ts',
         'src/modules/inventory/movements.service.ts',
         'src/modules/inventory/repositories/stock.mapper.ts',
         'src/modules/inventory/stock.service.ts',
