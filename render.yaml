@@ -8,6 +8,10 @@ services:
     # Same region as the Supabase project (us-east-2) to keep the round trip short.
     region: ohio
 
+    # Jenkins deploys, through the service's deploy hook, once the pipeline
+    # passes. A push on its own must not reach production.
+    autoDeployTrigger: off
+
     # Migrations run here, not at start: `migrate deploy` is idempotent and a
     # failure must abort the deploy instead of crash-looping a live instance.
     # Render's pre-deploy hook, where this belongs, is a paid feature.

@@ -61,8 +61,23 @@ pipeline {
     stage('SonarQube') {
       steps {
         // The server comes from SONAR_HOST_URL, set on the Jenkins controller.
+        // qualitygate.wait fails the stage when the gate fails, so nothing below
+        // it ships.
         withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-          sh 'pnpm dlx @sonar/scan'
+          sh 'pnpm dlx @sonar/scan -Dsonar.qualitygate.wait=true'
+        }
+      }
+    }
+
+    stage('Deploy') {
+      // Render's auto-deploy is off (render.yaml): production moves only here,
+      // after every stage above passed, and only from main.
+      when { expression { env.GIT_BRANCH == 'origin/main' } }
+      steps {
+        // `ref` pins the deploy to the commit this build tested, not whatever
+        // reached main while it ran. Render builds it and runs the migrations.
+        withCredentials([string(credentialsId: 'render-deploy-hook', variable: 'RENDER_DEPLOY_HOOK')]) {
+          sh 'curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK&ref=$GIT_COMMIT"'
         }
       }
     }

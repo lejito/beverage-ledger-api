@@ -239,6 +239,7 @@ cp .env.example .env          # admin, SONAR_TOKEN y los datos del front
 docker compose up -d --build  # Jenkins en :8080, SonarQube en :9000
 ```
 
+- **Despliega Jenkins, no Render.** `render.yaml` lleva `autoDeployTrigger: off`; el stage `Deploy` llama al *deploy hook* del servicio (`RENDER_DEPLOY_HOOK`) con `ref=<commit>` solo en `main` y solo si pasaron todos los stages anteriores, umbral de calidad de SonarQube incluido. El hook responde al encolar el despliegue, no al terminarlo: el resultado se ve en Render.
 - **El stage de análisis va contra el SonarQube local, no contra SonarCloud**: el servidor sale de `SONAR_HOST_URL`, que pone Jenkins, y el `Jenkinsfile` no nombra ninguno. GitHub Actions sigue analizando en SonarCloud con `sonar-project.properties`, cuyo `sonar.organization` el SonarQube local ignora.
 - **El job lee el `Jenkinsfile` de GitHub**, no del disco: un cambio al pipeline no corre hasta que se empuja. Consulta el repo cada 5 minutos, porque un Jenkins en localhost no recibe webhooks. El repo es privado: Jenkins clona con la credencial `github`, un token de solo lectura que va en `GITHUB_TOKEN` del `.env`.
 - **El workspace se borra al terminar cada build** (`cleanWs`): un `dist/` viejo hace que Vitest recoja archivos que parecen tests. El store de pnpm vive en el volumen de Jenkins, así que reinstalar sale barato.
