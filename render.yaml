@@ -15,8 +15,12 @@ services:
     # Migrations run here, not at start: `migrate deploy` is idempotent and a
     # failure must abort the deploy instead of crash-looping a live instance.
     # Render's pre-deploy hook, where this belongs, is a paid feature.
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build && pnpm db:deploy
-    startCommand: pnpm start:prod
+    #
+    # `corepack pnpm` and not `corepack enable`: the image ships its own pnpm on
+    # a read-only /usr/bin, and enable fails trying to relink it. Going through
+    # corepack still runs the exact version pinned in `packageManager`.
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm build && corepack pnpm db:deploy
+    startCommand: corepack pnpm start:prod
 
     # Answers 503 when Postgres is unreachable, so a bad deploy never goes live.
     healthCheckPath: /api/v1/health
