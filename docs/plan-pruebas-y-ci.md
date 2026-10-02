@@ -101,11 +101,11 @@ Variables de la API en Render: las de `.env.example`, con `FRONTEND_URL` y `CORS
 
 Los dos repositorios se **forkean** a una cuenta del equipo. Todo el trabajo (pruebas, `Dockerfile`, `Jenkinsfile`, colección de Postman) se sube al fork y nunca al repositorio original. Jenkins clona el fork.
 
-Los clones locales apuntan hoy al original (`origin = https://github.com/T-cordoba/...`). Después de crear los forks, en cada clon:
+Los clones locales apuntan hoy al repositorio original (`origin`). Después de crear los forks, en cada clon:
 
 ```bash
 git remote rename origin upstream
-git remote add origin https://github.com/<cuenta-del-equipo>/beverage-ledger-api.git
+git remote add origin https://github.com/sepita1234/beverage-ledger-api.git
 git push -u origin main
 ```
 

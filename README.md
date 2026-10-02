@@ -4,7 +4,7 @@ API de gestión de inventario de licores para hostelería. Registra movimientos 
 
 Construida con **NestJS 11**, **Prisma 7** y **PostgreSQL** (Supabase).
 
-> Este repositorio es solo el backend. El frontend está en [`beverage-ledger`](https://github.com/lejito/beverage-ledger), y el servidor de integración continua en la carpeta `jenkins/beverage-ledger/`, hermana de los dos clones.
+> Este repositorio es solo el backend. El frontend está en el repositorio `beverage-ledger`, y el servidor de integración continua en la carpeta `jenkins/beverage-ledger/`, hermana de los dos clones.
 
 ---
 
@@ -32,7 +32,7 @@ El reparto sigue el principio de **segregación de funciones**: quien despacha m
 Requisitos: Node.js 22 y Docker (opcional, para la base local). pnpm llega por corepack, en la versión fijada en `packageManager`.
 
 ```bash
-git clone https://github.com/lejito/beverage-ledger-api.git
+git clone https://github.com/sepita1234/beverage-ledger-api.git
 cd beverage-ledger-api
 corepack enable
 pnpm install             # también genera el cliente de Prisma

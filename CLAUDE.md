@@ -15,7 +15,7 @@ La fuente de verdad del inventario es un **ledger inmutable** de líneas de movi
 | | Repositorio | Stack |
 |---|---|---|
 | Backend | `beverage-ledger-api` (este) | NestJS 11, Prisma 7, Supabase Postgres |
-| Frontend | [`beverage-ledger`](https://github.com/lejito/beverage-ledger), clonado como carpeta hermana de este | Next.js 15, TypeScript, Tailwind |
+| Frontend | `beverage-ledger`, clonado como carpeta hermana de este | Next.js 15, TypeScript, Tailwind |
 
 La ruta local de los clones cambia según la máquina de cada colaborador: no asumas una absoluta.
 
