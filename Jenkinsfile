@@ -19,7 +19,7 @@ pipeline {
   }
 
   stages {
-    stage('Install') {
+    stage('Instalación') {
       steps {
         sh 'pnpm install --frozen-lockfile'
         // src/generated is gitignored and several tests import its enums as
@@ -28,21 +28,21 @@ pipeline {
       }
     }
 
-    stage('Static checks') {
+    stage('Revisión estática') {
       parallel {
         stage('Lint') {
           steps { sh 'pnpm lint' }
         }
-        stage('Typecheck') {
+        stage('Tipos') {
           steps { sh 'pnpm typecheck' }
         }
-        stage('Format') {
+        stage('Formato') {
           steps { sh 'pnpm format:check' }
         }
       }
     }
 
-    stage('Test') {
+    stage('Pruebas') {
       steps {
         sh 'pnpm test:coverage --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml'
       }
@@ -54,11 +54,11 @@ pipeline {
       }
     }
 
-    stage('Build') {
+    stage('Compilación') {
       steps { sh 'pnpm build' }
     }
 
-    stage('SonarQube') {
+    stage('Calidad (SonarQube)') {
       steps {
         // The server comes from SONAR_HOST_URL, set on the Jenkins controller.
         // qualitygate.wait fails the stage when the gate fails, so nothing below
@@ -69,7 +69,7 @@ pipeline {
       }
     }
 
-    stage('Deploy') {
+    stage('Despliegue') {
       // Render's auto-deploy is off (render.yaml): production moves only here,
       // after every stage above passed, and only from main.
       when { expression { env.GIT_BRANCH == 'origin/main' } }
