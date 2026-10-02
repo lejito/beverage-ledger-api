@@ -1,10 +1,10 @@
 # Beverage Ledger API
 
-API de gestión de inventario de licores para hostelería. Registra movimientos de producto —entradas de proveedor, salidas de bodega a barra, ajustes por merma— y mantiene existencias, historial auditable y reportes.
+API de gestión de inventario de licores para hostelería. Registra movimientos de producto —entradas de proveedor, salidas de bodega a barra, traspasos entre bodegas y ajustes por merma— y mantiene existencias, historial auditable y reportes.
 
 Construida con **NestJS 11**, **Prisma 7** y **PostgreSQL** (Supabase).
 
-> Este repositorio es solo el backend. El frontend está en [`beverage-ledger`](https://github.com/lejito/beverage-ledger).
+> Este repositorio es solo el backend. El frontend está en [`beverage-ledger`](https://github.com/lejito/beverage-ledger), y el servidor de integración continua en la carpeta `jenkins/beverage-ledger/`, hermana de los dos clones.
 
 ---
 
@@ -12,15 +12,16 @@ Construida con **NestJS 11**, **Prisma 7** y **PostgreSQL** (Supabase).
 
 La fuente de verdad es un **ledger inmutable**: cada movimiento confirmado deja líneas en `movement_items` que nunca se editan. Las existencias (`stock_levels`) son una proyección que se actualiza en la misma transacción que confirma o anula un movimiento.
 
-Esto da dos cosas a la vez: el stock se lee en una sola consulta, y siempre es reconstruible desde el historial. Si la proyección y el ledger discrepan, hay un bug — y se puede detectar con una consulta.
+Esto da dos cosas a la vez: el stock se lee en una sola consulta, y siempre es reconstruible desde el historial. Si la proyección y el ledger discrepan, hay un bug, y se puede detectar con una consulta.
 
-Tres tipos de movimiento:
+Cuatro tipos de movimiento:
 
 | Tipo | Efecto | Quién puede |
 |---|---|---|
 | `INBOUND` | Suma existencias | Manager, administrador |
 | `OUTBOUND` | Resta existencias | Cualquiera, incluido el operador |
 | `ADJUSTMENT` | Corrige en cualquier dirección, con motivo obligatorio | Manager, administrador |
+| `TRANSFER` | Mueve existencias de una bodega a otra | Manager, administrador |
 
 El reparto sigue el principio de **segregación de funciones**: quien despacha mercancía no debería poder alterar los números que la justifican.
 
@@ -28,18 +29,19 @@ El reparto sigue el principio de **segregación de funciones**: quien despacha m
 
 ## Puesta en marcha
 
-Requisitos: Node.js 20.19+, Docker (opcional, para la base local).
+Requisitos: Node.js 22 y Docker (opcional, para la base local). pnpm llega por corepack, en la versión fijada en `packageManager`.
 
 ```bash
 git clone https://github.com/lejito/beverage-ledger-api.git
 cd beverage-ledger-api
-pnpm install
+corepack enable
+pnpm install             # también genera el cliente de Prisma
 
 cp .env.example .env     # y rellenar los valores
 
 docker compose up -d     # Postgres local (puertos 5434 y 5433)
-pnpm db:migrate       # aplica las migraciones
-pnpm db:seed:demo     # catálogo + datos de demostración
+pnpm db:migrate          # aplica las migraciones
+pnpm db:seed:demo        # catálogo + datos de demostración
 
 pnpm start:dev
 ```
@@ -53,9 +55,9 @@ No son intercambiables:
 | Variable | Puerto en Supabase | Para qué |
 |---|---|---|
 | `DATABASE_URL` | 6543, pooler en modo transacción | La aplicación en runtime |
-| `DIRECT_URL` | 5432, directa o pooler en modo sesión | Migraciones de Prisma |
+| `DIRECT_URL` | 5432, pooler en modo sesión o conexión directa | Migraciones de Prisma |
 
-El pooler en modo transacción no puede ejecutar migraciones. Y si la contraseña contiene `/ % @ :`, hay que URL-encodearla (`/` → `%2F`, `%` → `%25`) o la conexión falla con un error de parseo poco claro.
+El pooler en modo transacción no puede ejecutar migraciones. En Supabase, la base se llama `postgres`, y la conexión directa (`db.<proyecto>.supabase.co`) solo responde por IPv6 en el plan gratuito: desde Render o desde una red sin IPv6, usa el pooler en modo sesión. Si la contraseña contiene `/ % @ :`, hay que URL-encodearla (`/` → `%2F`, `%` → `%25`) o la conexión falla con un error de parseo poco claro.
 
 `SHADOW_DATABASE_URL` apunta al Postgres de `docker-compose`: `prisma migrate dev` necesita crear y destruir una base para detectar drift, y el rol de aplicación de Supabase no puede hacerlo. Solo se usa en desarrollo.
 
@@ -66,9 +68,9 @@ pnpm db:seed        # 215 licores, 14 categorías, 160 marcas, stock en CERO
 pnpm db:seed:demo   # lo anterior + apertura de inventario e histórico de salidas
 ```
 
-La distinción es deliberada: un negocio recién dado de alta arranca con el inventario vacío y solo tiene existencias cuando alguien registra entradas. El stock simulado existe únicamente para que la demo se vea viva, y se genera con un PRNG con semilla fija para que sea idéntico en cualquier máquina.
+La distinción es deliberada: un negocio recién dado de alta arranca con el inventario vacío y solo tiene existencias cuando alguien registra entradas. El stock simulado existe únicamente para que la demo se vea viva, y se genera con un PRNG con semilla fija para que sea idéntico en cualquier máquina. Ambos modos son idempotentes.
 
-Ambos modos son idempotentes.
+Para que el administrador sembrado pueda entrar, define `SEED_ADMIN_PASSWORD` antes de sembrar. Sin esa variable queda como `INVITED` y sin forma de autenticarse, que es el comportamiento correcto para un repositorio.
 
 ---
 
@@ -82,18 +84,28 @@ prisma/
   data/products.ts     catálogo semilla
 src/
   config/              validación del entorno (Zod) y configuración tipada
-  common/              filtros, DTOs compartidos, contexto de tenant, repositorio base
+  common/              guards, permisos, filtros, DTOs compartidos, contexto de tenant
   infra/prisma/        PrismaService
   modules/             un módulo por dominio
+test/                  pruebas de caminos, una por requisito funcional
+test/regression/       pruebas de regresión
+Jenkinsfile            pipeline de integración y despliegue
+render.yaml            blueprint de despliegue en Render
 ```
 
 Cada módulo respeta la misma cadena: **controller** (solo HTTP) → **service** (caso de uso, sin saber de HTTP ni de Prisma) → **repository** (lo único que toca Prisma) → **DTO** (valida con `class-validator` y documenta con `@nestjs/swagger`).
 
 ### Preparado para multi-tenant
 
-Hoy hay una sola organización, pero el aislamiento está construido desde la primera migración: `organizationId` en toda tabla de negocio, un `TenantContextService` que guarda la organización de la petición en curso, y un `BaseRepository` que compone el filtro automáticamente. Ningún service escribe ese filtro a mano — basta un olvido para filtrar datos de otro cliente.
+Hoy hay una sola organización, pero el aislamiento está construido desde la primera migración: `organizationId` en toda tabla de negocio, un `TenantContextService` que guarda la organización de la petición en curso, y un `BaseRepository` que compone el filtro automáticamente. Ningún service escribe ese filtro a mano: basta un olvido para filtrar datos de otro cliente.
 
-Lo que llega cuando el SaaS sea concreto: alta de organizaciones, facturación, invitaciones y subdominios.
+Lo que llega cuando el SaaS sea concreto: alta de organizaciones, facturación y subdominios.
+
+### Autenticación
+
+Toda ruta nace protegida: el `JwtAuthGuard` es global y hay que marcarla `@Public()` para abrirla. Para probar desde Swagger, primero `POST /auth/login` y luego pega el `accessToken` en *Authorize*.
+
+No hay registro abierto: se entra por invitación de un administrador. El login con Google solo se activa si defines `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `GOOGLE_CALLBACK_URL`, las tres juntas; sin ellas la API arranca igual y esas rutas responden 501.
 
 ---
 
@@ -103,35 +115,55 @@ Lo que llega cuando el SaaS sea concreto: alta de organizaciones, facturación, 
 |---|---|
 | `pnpm start:dev` | Desarrollo con recarga |
 | `pnpm build` / `start:prod` | Compila y sirve |
-| `pnpm lint` / `typecheck` / `format` | Calidad de código |
-| `pnpm test` | Pruebas unitarias (Vitest) |
-| `pnpm test:coverage` | Las mismas, con `coverage/lcov.info` para SonarCloud |
-| `pnpm db:migrate` | Crea y aplica una migración |
+| `pnpm lint` / `typecheck` / `format:check` | Calidad de código |
+| `pnpm test` | Pruebas (Vitest) |
+| `pnpm test:coverage` | Las mismas, con `coverage/lcov.info` para SonarQube |
+| `pnpm db:migrate` | Crea y aplica una migración (desarrollo) |
+| `pnpm db:deploy` | Aplica las migraciones pendientes (producción) |
 | `pnpm db:generate` | Regenera el cliente de Prisma |
 | `pnpm db:studio` | Inspector de datos |
 | `pnpm db:reset` | Borra y rehace la base (destructivo) |
 
-El cliente de Prisma se genera en `src/generated/prisma` y **no se versiona**: tras clonar hay que correr `pnpm db:generate`.
-
-Las pruebas viven en `test/`, una por requisito funcional, y ejercitan cada camino independiente de la unidad con dobles construidos a mano: no tocan la base de datos ni la red. Como cinco de ellas importan los enums de `src/generated/prisma`, hay que correr `pnpm db:generate` antes que `pnpm test` en un clon nuevo.
+El cliente de Prisma se genera en `src/generated/prisma` y **no se versiona**. `pnpm install` lo genera; si hace falta rehacerlo, `pnpm db:generate`.
 
 ---
 
-## Estado
+## Pruebas
 
-| Fase | Contenido | Estado |
-|---|---|---|
-| 1 | Fundaciones: configuración, esquema, seed, `common/`, salud | ✅ |
-| 2 | Autenticación: local + Google OAuth, JWT, refresh rotativo, permisos | ✅ |
-| 3 | Catálogo, inventario, reportes, generación de PDF | 🔄 En curso |
+Las pruebas viven en `test/` y no tocan la base de datos ni la red: cada service se instancia con `new` y sus repositorios se reemplazan por dobles hechos a mano.
 
-Hoy la API expone salud, autenticación y gestión de usuarios, con la documentación en `/docs`. Los módulos de negocio llegan en la Fase 3.
+- **Pruebas de caminos** (`test/rf-NN-back-*.test.ts`): una por requisito funcional, con un caso por camino independiente de la unidad.
+- **Pruebas de regresión** (`test/regression/`): fijan las decisiones documentadas que un cambio podría deshacer sin que las de caminos lo noten, como no revelar si un correo existe al fallar el login o no guardar nunca la contraseña en claro.
 
-Toda ruta nueva nace protegida: el `JwtAuthGuard` es global y hay que marcarla `@Public()` para abrirla. Para probar desde Swagger, primero `POST /auth/login` y luego pega el `accessToken` en *Authorize*.
+El coverage se mide solo sobre los archivos que alguna prueba ejecuta: `coverage.include` en `vitest.config.mts` y `sonar.coverage.exclusions` en `sonar-project.properties` se mueven juntas.
 
-El login con Google solo se activa si defines `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `GOOGLE_CALLBACK_URL`; sin ellas la API arranca igual y esas rutas responden 501.
+---
 
-Para que el administrador sembrado pueda entrar, define `SEED_ADMIN_PASSWORD` en tu `.env` y corre `pnpm db:seed`. Sin esa variable queda como `INVITED` y sin forma de autenticarse, que es el comportamiento correcto para un repositorio.
+## Integración y despliegue continuos
+
+Cada push a `main` lanza el pipeline en Jenkins, definido en el [`Jenkinsfile`](./Jenkinsfile):
+
+1. **Instalación de dependencias**, con el cliente de Prisma.
+2. **Revisión estática**: lint, tipos y formato.
+3. **Pruebas (unitarias, regresión)**, con coverage.
+4. **Compilación**.
+5. **Calidad (SonarQube)**: análisis y umbral de calidad; si no se cumple, el pipeline se detiene.
+6. **Despliegue** en Render, solo desde `main` y solo si todo lo anterior pasó.
+
+Si una fase falla, las siguientes no se ejecutan y nada llega a producción.
+
+El servidor de Jenkins y SonarQube corren en Docker desde la carpeta `jenkins/beverage-ledger/`, fuera de este repositorio; su `README.md` explica cómo levantarlos.
+
+### Despliegue en Render
+
+La API se despliega en Render con [`render.yaml`](./render.yaml):
+
+- **El despliegue automático está desactivado** (`autoDeployTrigger: off`). Solo despliega Jenkins, llamando al *deploy hook* del servicio con el commit que probó.
+- **Las migraciones corren en el build** (`db:deploy`): un fallo aborta el despliegue en vez de dejar la instancia caída.
+- **pnpm se invoca como `corepack pnpm`**, porque la imagen de Render trae su propio pnpm en un `/usr/bin` de solo lectura.
+- **Secretos que se configuran en el panel de Render:** `DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `CORS_ORIGINS` y `FRONTEND_URL`. `CORS_ORIGINS` lleva la URL del front, sin barra final.
+
+El plan gratuito duerme el servicio tras 15 minutos sin tráfico, y la primera petición después tarda unos 50 segundos.
 
 ---
 
