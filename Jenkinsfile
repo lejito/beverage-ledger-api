@@ -19,7 +19,7 @@ pipeline {
   }
 
   stages {
-    stage('Instalación') {
+    stage('Instalación de dependencias') {
       steps {
         sh 'pnpm install --frozen-lockfile'
         // src/generated is gitignored and several tests import its enums as
@@ -29,20 +29,14 @@ pipeline {
     }
 
     stage('Revisión estática') {
-      parallel {
-        stage('Lint') {
-          steps { sh 'pnpm lint' }
-        }
-        stage('Tipos') {
-          steps { sh 'pnpm typecheck' }
-        }
-        stage('Formato') {
-          steps { sh 'pnpm format:check' }
-        }
+      steps {
+        sh 'pnpm lint'
+        sh 'pnpm typecheck'
+        sh 'pnpm format:check'
       }
     }
 
-    stage('Pruebas') {
+    stage('Pruebas (unitarias, regresión)') {
       steps {
         sh 'pnpm test:coverage --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml'
       }
