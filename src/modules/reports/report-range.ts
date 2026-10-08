@@ -1,7 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import type { ReportRangeDto, ReportRangeEchoDto } from './dto/report.dto';
 
-const DEFAULT_RANGE_DAYS = 30;
+const DEFAULT_RANGE_DAYS = 30; //ORIGINAL
+//const DEFAULT_RANGE_DAYS = 31; // ALTERADA
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** @throws {BadRequestException} when the range reads backwards. */

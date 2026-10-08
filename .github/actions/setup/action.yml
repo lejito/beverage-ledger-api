@@ -1,0 +1,22 @@
+name: Setup
+description: Node 22 with the pnpm pinned in package.json, and the dependencies installed.
+
+runs:
+  using: composite
+  steps:
+    - name: Enable corepack
+      shell: bash
+      run: corepack enable
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+
+    # src/generated is gitignored and several tests import its enums as values;
+    # postinstall covers it, but its failure is quiet.
+    - name: Install dependencies
+      shell: bash
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm db:generate

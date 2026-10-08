@@ -1,0 +1,123 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch supersedes a pull request run, but never a
+# run on the default branch: that one may be deploying.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+# prisma.config.ts resolves the datasource with `env('DIRECT_URL')`, which
+# throws when the variable is missing, and `prisma generate` runs from
+# postinstall. Nothing here connects, so a syntactically valid placeholder is
+# enough and no database credential belongs in CI.
+env:
+  DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+# One job per stage, chained with `needs` like the stages of the Jenkinsfile:
+# a failing job stops every job after it. Each job runs on a fresh runner, so
+# each sets up again; the pnpm cache keeps that to seconds.
+jobs:
+  install:
+    name: Instalación de dependencias
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+  static:
+    name: Revisión estática
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Lint
+        run: pnpm lint
+      - name: Tipos
+        run: pnpm typecheck
+      - name: Formato
+        run: pnpm format:check
+
+  test:
+    name: Pruebas (unitarias, regresión)
+    needs: static
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Pruebas con coverage
+        run: pnpm test:coverage
+      - name: Guardar el reporte de coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/lcov.info
+          retention-days: 7
+
+  build:
+    name: Compilación
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Compilación
+        run: pnpm build
+
+  quality:
+    name: Calidad (SonarQube Cloud)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Sonar needs the full history to attribute code and compute "new code".
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - name: Recuperar el reporte de coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: coverage
+      # sonar-project.properties carries the analysis settings; the
+      # organization and project key come from repository variables so the
+      # same file serves whichever SonarQube Cloud account imports the repo.
+      # qualitygate.wait fails this job when the gate fails, so nothing ships.
+      - name: Análisis y umbral de calidad
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.qualitygate.wait=true
+
+  deploy:
+    name: Despliegue
+    needs: quality
+    # Production moves only from the default branch, never from a pull request.
+    # Render's auto-deploy is off (render.yaml), so this is the only way in.
+    if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      # `ref` pins the deploy to the commit this run tested, not whatever
+      # reached the branch while it ran. Render builds it and runs migrations.
+      - name: Despliegue en Render
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK&ref=$GITHUB_SHA"
