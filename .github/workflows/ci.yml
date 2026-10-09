@@ -48,25 +48,25 @@ jobs:
       - name: Formato
         run: pnpm format:check
 
-  test:
-    name: Pruebas (unitarias, regresión)
+  unit:
+    name: Pruebas unitarias
     needs: static
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - name: Pruebas con coverage
-        run: pnpm test:coverage
+      - name: Pruebas unitarias con coverage
+        run: pnpm test:unit --coverage --coverage.reportsDirectory=coverage/unit
       - name: Guardar el reporte de coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage
-          path: coverage/lcov.info
+          name: coverage-unit
+          path: coverage/unit/lcov.info
           retention-days: 7
 
   build:
     name: Compilación
-    needs: test
+    needs: unit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,9 +74,64 @@ jobs:
       - name: Compilación
         run: pnpm build
 
+  functional:
+    name: Pruebas de regresión · Pruebas funcionales
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Pruebas funcionales con coverage
+        run: pnpm test:funcional --coverage --coverage.reportsDirectory=coverage/funcional
+      - name: Guardar el reporte de coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-funcional
+          path: coverage/funcional/lcov.info
+          retention-days: 7
+
+  # The two suites below call the API deployed on Render and write to its
+  # database through dedicated CI accounts. One at a time across runs: they share
+  # the login rate limit.
+  api:
+    name: Pruebas de regresión · Pruebas de API
+    needs: functional
+    runs-on: ubuntu-latest
+    concurrency: { group: render-api, cancel-in-progress: false }
+    env: &deployed-api
+      API_URL: ${{ vars.API_URL }}
+      CI_ADMIN_EMAIL: ${{ secrets.CI_ADMIN_EMAIL }}
+      CI_ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
+      CI_MANAGER_EMAIL: ${{ secrets.CI_MANAGER_EMAIL }}
+      CI_MANAGER_PASSWORD: ${{ secrets.CI_MANAGER_PASSWORD }}
+      CI_OPERATOR_EMAIL: ${{ secrets.CI_OPERATOR_EMAIL }}
+      CI_OPERATOR_PASSWORD: ${{ secrets.CI_OPERATOR_PASSWORD }}
+      CI_LOCKOUT_EMAIL: ${{ secrets.CI_LOCKOUT_EMAIL }}
+      CI_LOCKOUT_PASSWORD: ${{ secrets.CI_LOCKOUT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Pruebas de API
+        run: pnpm test:api
+
+  security:
+    name: Pruebas de regresión · Pruebas de seguridad
+    needs: api
+    runs-on: ubuntu-latest
+    concurrency: { group: render-api, cancel-in-progress: false }
+    env: *deployed-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Pruebas de seguridad
+        run: pnpm test:seguridad
+      # Production dependencies only: dev tooling never reaches Render.
+      - name: Auditoría de dependencias
+        run: pnpm audit --prod --audit-level high
+
   quality:
     name: Calidad (SonarQube Cloud)
-    needs: build
+    needs: security
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,11 +139,17 @@ jobs:
           # Sonar needs the full history to attribute code and compute "new code".
           fetch-depth: 0
       - uses: ./.github/actions/setup
-      - name: Recuperar el reporte de coverage
+      - name: Recuperar los reportes de coverage
         uses: actions/download-artifact@v4
         with:
-          name: coverage
+          pattern: coverage-*
           path: coverage
+      # download-artifact puts each one in a folder named after it.
+      - name: Ordenar los reportes como los espera sonar-project.properties
+        run: |
+          mkdir -p coverage/unit coverage/funcional
+          mv coverage/coverage-unit/lcov.info coverage/unit/lcov.info
+          mv coverage/coverage-funcional/lcov.info coverage/funcional/lcov.info
       # sonar-project.properties carries the analysis settings; the
       # organization and project key come from repository variables so the
       # same file serves whichever SonarQube Cloud account imports the repo.
