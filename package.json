@@ -31,6 +31,7 @@
     "db:studio": "prisma studio",
     "db:seed": "prisma db seed",
     "db:seed:demo": "cross-env SEED_MODE=demo prisma db seed",
+    "db:seed:ci": "cross-env SEED_MODE=ci prisma db seed",
     "db:reset": "prisma migrate reset"
   },
   "prisma": {

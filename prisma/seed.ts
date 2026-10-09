@@ -10,9 +10,17 @@ import { seedProducts } from './data/products';
  *
  *   npm run db:seed        catalogue with stock at ZERO, like a new business
  *   npm run db:seed:demo   plus an opening movement and simulated history
+ *   npm run db:seed:ci     only the CI accounts, for a database already in use
  */
 
 const DEMO = process.env.SEED_MODE === 'demo';
+
+/**
+ * The full seed matches products by name and categories and brands by slug, so on
+ * a database people already use it would bring back one they renamed or deleted.
+ * This mode touches nothing but the CI accounts.
+ */
+const CI_ONLY = process.env.SEED_MODE === 'ci';
 
 const ORGANIZATION = {
   slug: 'demo',
@@ -32,6 +40,40 @@ const ADMIN = {
  * everyone has.
  */
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
+
+/**
+ * The members the regression and browser suites sign in as (CI_* in their
+ * environment). Each one is seeded only when its SEED_CI_*_PASSWORD is set, so a
+ * plain seed never leaves a test admin with a known password behind. The emails
+ * are fixed: they are what the pipelines' CI_*_EMAIL hold.
+ */
+const CI_ACCOUNTS = [
+  {
+    email: 'ci.admin@beverageledger.test',
+    name: 'CI Administrador',
+    role: 'ORG_ADMIN',
+    passwordVar: 'SEED_CI_ADMIN_PASSWORD',
+  },
+  {
+    email: 'ci.manager@beverageledger.test',
+    name: 'CI Encargado',
+    role: 'MANAGER',
+    passwordVar: 'SEED_CI_MANAGER_PASSWORD',
+  },
+  {
+    email: 'ci.operator@beverageledger.test',
+    name: 'CI Operador',
+    role: 'OPERATOR',
+    passwordVar: 'SEED_CI_OPERATOR_PASSWORD',
+  },
+  // The security suite locks this one on purpose; re-seeding unlocks it.
+  {
+    email: 'ci.lockout@beverageledger.test',
+    name: 'CI Bloqueo',
+    role: 'OPERATOR',
+    passwordVar: 'SEED_CI_LOCKOUT_PASSWORD',
+  },
+] as const;
 
 const DEFAULT_LOCATION = 'Bodega principal';
 const OUTBOUND_MOVEMENTS = 40;
@@ -67,7 +109,49 @@ const movementCode = (year: number, sequence: number): string =>
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
+/** The parameters the API's PasswordService hashes with. */
+const hashPassword = (password: string): Promise<string> =>
+  argon2.hash(password, { type: argon2.argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 });
+
+/**
+ * Upserts each CI account whose password is set. The update applies the
+ * password, role and status again and clears the lockout, so re-running the seed
+ * is also how a locked or drifted CI account is put back as the suites expect.
+ */
+async function seedCiAccounts(organizationId: string): Promise<void> {
+  for (const account of CI_ACCOUNTS) {
+    const password = process.env[account.passwordVar];
+    if (!password) continue;
+
+    const state = {
+      passwordHash: await hashPassword(password),
+      role: account.role,
+      status: 'ACTIVE' as const,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    };
+
+    await prisma.user.upsert({
+      where: { organizationId_email: { organizationId, email: account.email } },
+      update: state,
+      create: { organizationId, email: account.email, name: account.name, ...state },
+    });
+    console.log(`  CI account ${account.email} is ACTIVE as ${account.role}`);
+  }
+}
+
 async function main(): Promise<void> {
+  if (CI_ONLY) {
+    console.log('Seeding the CI accounts only...');
+    const existing = await prisma.organization.findUnique({ where: { slug: ORGANIZATION.slug } });
+    if (!existing)
+      throw new Error(
+        `Organization "${ORGANIZATION.slug}" does not exist: run the full seed first`,
+      );
+    await seedCiAccounts(existing.id);
+    return;
+  }
+
   console.log(`Seeding in ${DEMO ? 'DEMO' : 'minimal'} mode...`);
 
   const organization = await prisma.organization.upsert({
@@ -82,14 +166,7 @@ async function main(): Promise<void> {
     create: { organizationId: organization.id, name: DEFAULT_LOCATION, isDefault: true },
   });
 
-  const passwordHash = ADMIN_PASSWORD
-    ? await argon2.hash(ADMIN_PASSWORD, {
-        type: argon2.argon2id,
-        memoryCost: 19456,
-        timeCost: 2,
-        parallelism: 1,
-      })
-    : null;
+  const passwordHash = ADMIN_PASSWORD ? await hashPassword(ADMIN_PASSWORD) : null;
 
   const admin = await prisma.user.upsert({
     where: { organizationId_email: { organizationId: organization.id, email: ADMIN.email } },
@@ -112,6 +189,8 @@ async function main(): Promise<void> {
       ? `  admin ${ADMIN.email} is ACTIVE with the password from SEED_ADMIN_PASSWORD`
       : `  admin ${ADMIN.email} is INVITED: set SEED_ADMIN_PASSWORD and re-run to give it a password`,
   );
+
+  await seedCiAccounts(organization.id);
 
   const categoryNames = [...new Set(seedProducts.map((product) => product.category))];
   const categoryIdByName = new Map<string, string>();
