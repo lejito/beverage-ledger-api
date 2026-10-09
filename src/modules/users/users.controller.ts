@@ -59,7 +59,7 @@ export class UsersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Change your own password. Signs out every session' })
   @ApiNoContentResponse({ description: 'Password changed' })
-  @ApiBadRequestResponse({ description: 'The current password is missing' })
+  @ApiBadRequestResponse({ description: 'The current password is missing or incorrect' })
   changePassword(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ChangePasswordDto,

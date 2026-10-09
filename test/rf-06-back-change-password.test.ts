@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuditAction, AuditEntity } from '../src/modules/audit/audit.actions';
 import { ProfileService } from '../src/modules/users/profile.service';
@@ -99,7 +99,7 @@ describe('ProfileService.changePassword', () => {
     expect(revokeAllForUser).not.toHaveBeenCalled();
   });
 
-  it('Camino 4 - currentPassword incorrecta, lanza UnauthorizedException', async () => {
+  it('Camino 4 - currentPassword incorrecta, lanza BadRequestException', async () => {
     // Arrange
     findById.mockResolvedValue({ id: 'user-1', passwordHash: 'hash-existente' });
     verify.mockResolvedValue(false);
@@ -111,7 +111,7 @@ describe('ProfileService.changePassword', () => {
     });
 
     // Assert
-    await expect(act).rejects.toThrow(UnauthorizedException);
+    await expect(act).rejects.toThrow(BadRequestException);
     expect(update).not.toHaveBeenCalled();
     expect(revokeAllForUser).not.toHaveBeenCalled();
   });

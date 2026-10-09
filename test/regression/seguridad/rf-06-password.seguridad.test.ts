@@ -25,13 +25,13 @@ describe('RF-06 - Seguridad del cambio de contraseña', () => {
     expect(respuesta.status).toBe(400);
   });
 
-  it('Caso 3 - con una contraseña actual incorrecta responde 401', async () => {
+  it('Caso 3 - con una contraseña actual incorrecta responde 400, no 401: la sesión sigue siendo válida', async () => {
     const respuesta = await call('PUT', '/users/me/password', {
       token: operador(),
       body: { currentPassword: 'No-Es-La-Actual-2026', newPassword: 'Nueva-Segura-2026' },
     });
 
-    expect(respuesta.status).toBe(401);
+    expect(respuesta.status).toBe(400);
   });
 
   it('Caso 4 - un campo que el DTO no declara (otro usuario) responde 400', async () => {

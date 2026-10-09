@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -89,7 +89,7 @@ describe('RF-06 - Regresión del cambio de contraseña', () => {
     });
 
     // Assert
-    await expect(resultado).rejects.toThrow(UnauthorizedException);
+    await expect(resultado).rejects.toThrow(BadRequestException);
     expect(hash).not.toHaveBeenCalled();
     expect(revokeAllForUser).not.toHaveBeenCalled();
     expect(record).not.toHaveBeenCalled();

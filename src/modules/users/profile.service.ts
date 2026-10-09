@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, AuditEntity } from '../audit/audit.actions';
 import { AuditService } from '../audit/audit.service';
 import { PasswordService } from '../auth/password.service';
@@ -35,7 +30,9 @@ export class ProfileService {
   }
 
   /**
-   * @throws {UnauthorizedException} when the current password does not match.
+   * @throws {BadRequestException} when the current password is missing or does
+   * not match. Not a 401: the caller is authenticated, and the web client reads
+   * any 401 as a lost session and signs the user out over a typo.
    *
    * Every session is dropped afterwards: a password change is what someone does
    * when they suspect a session they no longer control, and leaving the others
@@ -54,7 +51,7 @@ export class ProfileService {
       }
 
       if (!(await this.passwords.verify(user.passwordHash, dto.currentPassword))) {
-        throw new UnauthorizedException('The current password is incorrect');
+        throw new BadRequestException('The current password is incorrect');
       }
     }
 
