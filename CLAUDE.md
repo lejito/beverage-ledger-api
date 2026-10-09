@@ -138,7 +138,18 @@ Decisiones que quedaron tomadas al construirlo:
 - **Credenciales de Google OAuth** sin crear en Google Cloud Console (ver arriba). Nada más depende de ello.
 - **La estructura del documento PDF queda pendiente de revisión.** El layout actual es una migración del que había en el front, con las columnas reducidas a lo que el ledger realmente guarda: nombre y marca del snapshot, cantidad, unidad y unidades base. El resto de los campos del original (origen, ABV, añejamiento, subcategoría) vivían en el blob JSON denormalizado y ahora están en `products`, no en la línea del movimiento — meterlos en el documento significa decidir si se leen del producto actual (y entonces un reimpreso viejo deja de ser fiel) o si el snapshot debe crecer. **Es una decisión de producto, no de código, y se aborda en una fase posterior** junto con la revisión visual del layout.
 - **El PDF usa las fuentes estándar**, que son WinAnsi: 218 caracteres, Windows-1252. Cubre los acentos del español, la raya y las comillas curvas, y `drawText` **lanza excepción** con cualquier cosa fuera de ese juego. `movement-pdf.service.ts` le pregunta a la fuente qué soporta y solo pliega lo que de verdad no cabe (a su letra base, o a `?` como último recurso). El arreglo definitivo es embeber una fuente Unicode, a costa de versionar un archivo de fuente.
-- **El proceso de V&V lo diseña el usuario**, así que no añadas herramienta de pruebas nueva sin que te la pidan. Lo que ya existe: **Vitest** con las pruebas de caminos en `test/` (`pnpm test`, `pnpm test:coverage`) y un workflow de **GitHub Actions** que publica el coverage en SonarCloud. Los tests corren con dobles hechos a mano —ni `@nestjs/testing` ni base de datos—, así que son deterministas y no necesitan red. El coverage está acotado a los archivos que alguna prueba ejecuta: `coverage.include` en `vitest.config.mts` los lista y `sonar.coverage.exclusions` escribe el complemento, y las dos listas se mueven juntas. Un archivo nuevo bajo prueba se añade a **las dos**, porque SWC borra los `import type` y un módulo que el test solo importa como tipo no aparecería.
+- **El proceso de V&V lo diseña el usuario**, así que no añadas herramienta de pruebas nueva sin que te la pidan. Lo que ya existe: **Vitest** con cuatro proyectos en `vitest.config.mts` y un workflow de **GitHub Actions** que publica el coverage en SonarCloud:
+
+  | Proyecto | Carpeta | Contra qué corre |
+  |---|---|---|
+  | `unit` | `test/*.test.ts` | dobles hechos a mano |
+  | `funcional` | `test/regression/funcional/` | dobles hechos a mano |
+  | `api` | `test/regression/api/` | **la API desplegada en Render** |
+  | `seguridad` | `test/regression/seguridad/` | **la API desplegada en Render** |
+
+  Las dos primeras son deterministas y no necesitan red: ni `@nestjs/testing` ni base de datos. Las de regresión cubren solo las 6 funcionalidades que ya tenían regresión: RF-01, 03, 06, 09, 29 y 30.
+- **`api` y `seguridad` escriben en la base de producción**, por decisión del usuario, a través de cuentas fijas de CI (`CI_ADMIN`, `CI_MANAGER`, `CI_OPERATOR` y `CI_LOCKOUT`, esta última solo para que la prueba de bloqueo la bloquee) y del producto fijo `[CI] Producto de prueba`, que se edita y se restaura. Lo único que se acumula es **un miembro suspendido por corrida**: el global setup acepta una invitación, porque un usuario no se borra, y lo suspende al terminar. Toda llamada a login, refresh y las rutas públicas de invitación pasa por un presupuesto compartido en un archivo (`test/support/http.ts`), uno por debajo de `AUTH_THROTTLE`, para que la suite no tropiece con su propio 429.
+- **Las pruebas pendientes de la heurística van como `it.skip`** con el número de pregunta en el nombre: hoy, la 33 (código de referencia en los errores) y la 36 (búsqueda tolerante a errores tipográficos). Se activan cuando exista la función. El coverage está acotado a los archivos que alguna prueba ejecuta: `coverage.include` en `vitest.config.mts` los lista y `sonar.coverage.exclusions` escribe el complemento, y las dos listas se mueven juntas. Un archivo nuevo bajo prueba se añade a **las dos**, porque SWC borra los `import type` y un módulo que el test solo importa como tipo no aparecería.
 - **Convención de los tests**: un archivo por requisito, `rf-NN-back-<caso>.test.ts`, y un `it` por camino de la prueba de caja blanca (`'Camino 1 - …'`). Los nombres de `describe`/`it` y las variables locales de los tests van en español, excepción aceptada a §7 porque son la traza hacia el documento de V&V. Los services se instancian con `new` y repositorios `vi.fn()` casteados con `as unknown as`. Varios tests importan enums del cliente generado como valores: sin `pnpm db:generate` la suite ni carga.
 - **`pnpm test:clean`** (`scripts/clean-test-movements.ts`) borra de la base los borradores con nota `vitest` que dejaba una versión anterior de las pruebas, cuando sí tocaban la base. Hoy ninguna prueba la toca.
 - **Las pantallas nuevas del front no las ha recorrido nadie.** El backend se ejerció de punta a punta contra una base real —ciclo de traspaso, anulación, matriz de reglas e invariante en cero descuadres— y el backfill se verificó sobre los datos de Supabase, pero el CRUD de bodegas, la captura de traspaso y el tope del picker solo tienen typecheck, lint y build.
@@ -161,10 +172,14 @@ pnpm lint             # ESLint (lint:fix para corregir)
 pnpm typecheck        # tsc --noEmit
 pnpm format           # Prettier (format:check en modo verificación)
 
-pnpm test                                   # Vitest, toda la suite
+pnpm test                                   # unitarias y funcionales: sin red
+pnpm test:unit                              # solo unitarias
+pnpm test:funcional                         # solo regresión funcional
+pnpm test:api                               # regresión de API, contra API_URL
+pnpm test:seguridad                         # regresión de seguridad, contra API_URL
 pnpm test test/rf-23-back-resolve-location  # un archivo (filtro por ruta)
 pnpm test -t "Camino 2"                     # por nombre de it/describe
-pnpm test:coverage                          # con coverage, como en CI
+pnpm test:coverage                          # unitarias y funcionales con coverage
 
 pnpm db:migrate       # prisma migrate dev
 pnpm db:generate      # regenera el cliente en src/generated/prisma
@@ -239,7 +254,8 @@ cp .env.example .env          # admin, SONAR_TOKEN y los datos del front
 docker compose up -d --build  # Jenkins en :8080, SonarQube en :9000
 ```
 
-- **Las fases, en orden**: `Instalación de dependencias` (incluye `db:generate`) → `Revisión estática` (lint, tipos y formato, seguidos y no en paralelo: el primero que falla corta) → `Pruebas (unitarias, regresión)` → `Compilación` → `Calidad (SonarQube)` → `Despliegue`. Cada una se detiene si falla, y ninguna posterior corre.
+- **Las fases, en orden**: `Instalación de dependencias` (incluye `db:generate`) → `Revisión estática` (lint, tipos y formato, seguidos y no en paralelo: el primero que falla corta) → `Pruebas unitarias` → `Compilación` → `Pruebas de regresión` (`Pruebas funcionales` → `Pruebas de API` → `Pruebas de seguridad`, que además corre `pnpm audit --prod --audit-level high`) → `Calidad (SonarQube)` → `Despliegue`. Cada una se detiene si falla, y ninguna posterior corre. Sonar lee el coverage de `coverage/unit` y `coverage/funcional`.
+- **Las pruebas contra Render corren bajo `lock('render-api')`** (plugin `lockable-resources`), que comparten con las de navegador del job web: las dos salen de la misma IP y gastarían el mismo límite de login. Y prueban **lo que está desplegado**, no el commit en construcción, porque el despliegue va después: así lo decidió el usuario.
 - **Despliega Jenkins, no Render.** `render.yaml` lleva `autoDeployTrigger: off`; la fase `Despliegue` llama al *deploy hook* del servicio (`RENDER_DEPLOY_HOOK`) con `ref=<commit>` solo en `main` y solo si pasaron todas las fases anteriores, umbral de calidad de SonarQube incluido. El hook responde al encolar el despliegue, no al terminarlo: el resultado se ve en Render.
 - **El stage de análisis va contra el SonarQube local, no contra SonarCloud**: el servidor sale de `SONAR_HOST_URL`, que pone Jenkins, y el `Jenkinsfile` no nombra ninguno. GitHub Actions sigue analizando en SonarCloud con `sonar-project.properties`, cuyo `sonar.organization` el SonarQube local ignora.
 - **El job lee el `Jenkinsfile` de GitHub**, no del disco: un cambio al pipeline no corre hasta que se empuja. Un push a `main` lanza el build en segundos: el webhook del repo apunta a un canal de smee.io y el contenedor `smee` lo reenvía a Jenkins, que nunca queda expuesto a internet. Un sondeo cada 15 minutos recoge lo que se haya empujado con el relé apagado. El repo es privado: Jenkins clona con la credencial `github`, un token de solo lectura que va en `GITHUB_TOKEN` del `.env`.
