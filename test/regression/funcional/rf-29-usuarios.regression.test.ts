@@ -1,11 +1,11 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserRole, UserStatus } from '../../src/generated/prisma/enums';
-import { AuditAction, AuditEntity } from '../../src/modules/audit/audit.actions';
-import type { AuditService } from '../../src/modules/audit/audit.service';
-import type { TokenService } from '../../src/modules/auth/token.service';
-import type { UsersRepository } from '../../src/modules/users/repositories/users.repository';
-import { UsersService } from '../../src/modules/users/users.service';
+import { UserRole, UserStatus } from '../../../src/generated/prisma/enums';
+import { AuditAction, AuditEntity } from '../../../src/modules/audit/audit.actions';
+import type { AuditService } from '../../../src/modules/audit/audit.service';
+import type { TokenService } from '../../../src/modules/auth/token.service';
+import type { UsersRepository } from '../../../src/modules/users/repositories/users.repository';
+import { UsersService } from '../../../src/modules/users/users.service';
 
 /**
  * Regresión de RF-29: la administración de miembros. rf-29-back cubre los

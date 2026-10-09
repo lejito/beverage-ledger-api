@@ -2,14 +2,14 @@ import { UnauthorizedException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AuditService } from '../../src/modules/audit/audit.service';
-import type { PasswordService } from '../../src/modules/auth/password.service';
-import type { AuthRepository } from '../../src/modules/auth/repositories/auth.repository';
-import type { TokenService } from '../../src/modules/auth/token.service';
-import { ChangePasswordDto } from '../../src/modules/users/dto/user.dto';
-import { ProfileService } from '../../src/modules/users/profile.service';
-import type { UsersRepository } from '../../src/modules/users/repositories/users.repository';
-import type { UsersService } from '../../src/modules/users/users.service';
+import type { AuditService } from '../../../src/modules/audit/audit.service';
+import type { PasswordService } from '../../../src/modules/auth/password.service';
+import type { AuthRepository } from '../../../src/modules/auth/repositories/auth.repository';
+import type { TokenService } from '../../../src/modules/auth/token.service';
+import { ChangePasswordDto } from '../../../src/modules/users/dto/user.dto';
+import { ProfileService } from '../../../src/modules/users/profile.service';
+import type { UsersRepository } from '../../../src/modules/users/repositories/users.repository';
+import type { UsersService } from '../../../src/modules/users/users.service';
 
 const REGLA_DE_CLASES =
   'The password must contain a lowercase letter, an uppercase letter and a digit';

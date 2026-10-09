@@ -1,10 +1,10 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuditAction, AuditEntity } from '../../src/modules/audit/audit.actions';
-import type { AuditService } from '../../src/modules/audit/audit.service';
-import { ProductsAdminService } from '../../src/modules/catalog/products-admin.service';
-import { ProductsService } from '../../src/modules/catalog/products.service';
-import type { ProductsRepository } from '../../src/modules/catalog/repositories/products.repository';
+import { AuditAction, AuditEntity } from '../../../src/modules/audit/audit.actions';
+import type { AuditService } from '../../../src/modules/audit/audit.service';
+import { ProductsAdminService } from '../../../src/modules/catalog/products-admin.service';
+import { ProductsService } from '../../../src/modules/catalog/products.service';
+import type { ProductsRepository } from '../../../src/modules/catalog/repositories/products.repository';
 
 /**
  * Regresión de RF-09: lo que la edición de un producto protege fuera de sus

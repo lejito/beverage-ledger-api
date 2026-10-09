@@ -1,14 +1,14 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfigService } from '@nestjs/config';
-import type { AppConfig } from '../../src/config/configuration';
-import { UserRole, UserStatus } from '../../src/generated/prisma/enums';
-import { ROLE_PERMISSIONS } from '../../src/common/permissions/permissions.config';
-import { AuditAction, AuditEntity } from '../../src/modules/audit/audit.actions';
-import type { AuditService } from '../../src/modules/audit/audit.service';
-import { CredentialsService } from '../../src/modules/auth/credentials.service';
-import type { PasswordService } from '../../src/modules/auth/password.service';
-import type { AuthRepository } from '../../src/modules/auth/repositories/auth.repository';
+import type { AppConfig } from '../../../src/config/configuration';
+import { UserRole, UserStatus } from '../../../src/generated/prisma/enums';
+import { ROLE_PERMISSIONS } from '../../../src/common/permissions/permissions.config';
+import { AuditAction, AuditEntity } from '../../../src/modules/audit/audit.actions';
+import type { AuditService } from '../../../src/modules/audit/audit.service';
+import { CredentialsService } from '../../../src/modules/auth/credentials.service';
+import type { PasswordService } from '../../../src/modules/auth/password.service';
+import type { AuthRepository } from '../../../src/modules/auth/repositories/auth.repository';
 
 /**
  * Regresión de RF-01: las decisiones de seguridad del inicio de sesión que un

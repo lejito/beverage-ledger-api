@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserRole, UserStatus } from '../../src/generated/prisma/enums';
-import { AuditAction, AuditEntity } from '../../src/modules/audit/audit.actions';
-import type { AuditService } from '../../src/modules/audit/audit.service';
-import type { PasswordService } from '../../src/modules/auth/password.service';
-import type { AcceptInvitationDto } from '../../src/modules/invitations/dto/invitation.dto';
-import { InvitationsService } from '../../src/modules/invitations/invitations.service';
-import type { InvitationsRepository } from '../../src/modules/invitations/repositories/invitations.repository';
+import { UserRole, UserStatus } from '../../../src/generated/prisma/enums';
+import { AuditAction, AuditEntity } from '../../../src/modules/audit/audit.actions';
+import type { AuditService } from '../../../src/modules/audit/audit.service';
+import type { PasswordService } from '../../../src/modules/auth/password.service';
+import type { AcceptInvitationDto } from '../../../src/modules/invitations/dto/invitation.dto';
+import { InvitationsService } from '../../../src/modules/invitations/invitations.service';
+import type { InvitationsRepository } from '../../../src/modules/invitations/repositories/invitations.repository';
 
 /**
  * Regresión de RF-03: lo que hace segura una invitación más allá de sus

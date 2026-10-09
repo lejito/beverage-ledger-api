@@ -1,10 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { TenantContextService } from '../../src/common/tenant/tenant-context.service';
-import type { PrismaTransaction } from '../../src/infra/prisma/transaction';
-import { AuditAction, AuditEntity } from '../../src/modules/audit/audit.actions';
-import { AuditService } from '../../src/modules/audit/audit.service';
-import type { AuditRepository } from '../../src/modules/audit/repositories/audit.repository';
+import type { TenantContextService } from '../../../src/common/tenant/tenant-context.service';
+import type { PrismaTransaction } from '../../../src/infra/prisma/transaction';
+import { AuditAction, AuditEntity } from '../../../src/modules/audit/audit.actions';
+import { AuditService } from '../../../src/modules/audit/audit.service';
+import type { AuditRepository } from '../../../src/modules/audit/repositories/audit.repository';
 
 /**
  * Regresión de RF-30: el contrato de AuditService. rf-30-back prueba los
