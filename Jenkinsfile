@@ -48,6 +48,9 @@ pipeline {
         sh 'pnpm lint'
         sh 'pnpm typecheck'
         sh 'pnpm format:check'
+        // Production dependencies only: dev tooling never reaches Render. Here and
+        // not with the security suite, which runs after the deploy.
+        sh 'pnpm audit --prod --audit-level high'
       }
     }
 
@@ -66,41 +69,12 @@ pipeline {
 
     stage('Pruebas de regresión') {
       stages {
-        stage('Pruebas funcionales') {
+        stage('Funcionales') {
           steps {
             sh 'pnpm test:funcional --coverage --coverage.reportsDirectory=coverage/funcional --reporter=default --reporter=junit --outputFile.junit=reports/funcional.xml'
           }
           post {
             always { junit allowEmptyResults: true, testResults: 'reports/funcional.xml' }
-          }
-        }
-
-        // Both suites below run against the API deployed on Render and write to
-        // its database through dedicated CI accounts. The lock keeps this job and
-        // the web job from sharing the login rate limit at the same time.
-        stage('Pruebas de API') {
-          options { lock('render-api') }
-          steps {
-            withCredentials(ciAccounts()) {
-              sh 'pnpm test:api --reporter=default --reporter=junit --outputFile.junit=reports/api.xml'
-            }
-          }
-          post {
-            always { junit allowEmptyResults: true, testResults: 'reports/api.xml' }
-          }
-        }
-
-        stage('Pruebas de seguridad') {
-          options { lock('render-api') }
-          steps {
-            withCredentials(ciAccounts()) {
-              sh 'pnpm test:seguridad --reporter=default --reporter=junit --outputFile.junit=reports/seguridad.xml'
-            }
-            // Production dependencies only: dev tooling never reaches Render.
-            sh 'pnpm audit --prod --audit-level high'
-          }
-          post {
-            always { junit allowEmptyResults: true, testResults: 'reports/seguridad.xml' }
           }
         }
 
@@ -175,6 +149,48 @@ pipeline {
         withCredentials([string(credentialsId: 'render-deploy-hook', variable: 'RENDER_DEPLOY_HOOK')]) {
           sh 'curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK&ref=$GIT_COMMIT"'
         }
+        // The hook answers once the deploy is queued, not once it is live: the
+        // stages below must not start against the version before it.
+        timeout(time: 20, unit: 'MINUTES') {
+          waitUntil(initialRecurrencePeriod: 15000, quiet: true) {
+            script {
+              def served = sh(
+                script: '''curl --silent --max-time 20 "$API_URL/api/v1/health" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).commit||'')}catch{}})" || true''',
+                returnStdout: true
+              ).trim()
+              return served && env.GIT_COMMIT.startsWith(served)
+            }
+          }
+        }
+      }
+    }
+
+    // After the deploy: they call the API on Render, which now serves this commit,
+    // and write to its database through dedicated CI accounts. A failure no longer
+    // stops the deploy, it reports a regression already in production. Off main
+    // nothing is deployed, so they check what production serves. The lock keeps
+    // this job and the web job from sharing the login rate limit at the same time.
+    stage('Pruebas de regresión: API') {
+      options { lock('render-api') }
+      steps {
+        withCredentials(ciAccounts()) {
+          sh 'pnpm test:api --reporter=default --reporter=junit --outputFile.junit=reports/api.xml'
+        }
+      }
+      post {
+        always { junit allowEmptyResults: true, testResults: 'reports/api.xml' }
+      }
+    }
+
+    stage('Pruebas de regresión: Seguridad') {
+      options { lock('render-api') }
+      steps {
+        withCredentials(ciAccounts()) {
+          sh 'pnpm test:seguridad --reporter=default --reporter=junit --outputFile.junit=reports/seguridad.xml'
+        }
+      }
+      post {
+        always { junit allowEmptyResults: true, testResults: 'reports/seguridad.xml' }
       }
     }
   }
