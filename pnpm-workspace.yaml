@@ -41,7 +41,13 @@ minimumReleaseAge: 1440
 #     uses it to merge prisma.config.ts with its defaults; verified with
 #     `prisma generate`, `migrate diff` against the shadow database, the build
 #     and the test suite. Drop it once Prisma ships deepmerge-ts 8 itself.
+#
+# @nestjs/platform-express pins multer exactly and lets express hold body-parser
+# at 2.3; both patches stay within their major (GHSA-q7qp-rjg7-q26m,
+# GHSA-27r3-jxmh-p828). Drop them once Nest ships the patched versions.
 overrides:
   js-yaml@5: ^5.4.1
   mysql2@3: ^3.24.5
   deepmerge-ts@7: ^8.0.2
+  body-parser@2: ^2.4.0
+  multer@2: ^2.5.0
