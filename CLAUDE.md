@@ -33,7 +33,7 @@ Nació de una reescritura: el proyecto original era una sola app de Next.js con 
 
 **Con la Fase 3 el backend está completo.** Lo que sigue ocurre entero en el repo del front (Fases 4 a 8); aquí no hay trabajo pendiente salvo lo listado en "Deuda consciente" más abajo.
 
-**Desplegado y funcionando** en Render: `https://beverage-ledger-api.onrender.com`. Ver §4.
+**Desplegado y funcionando** en Render: `https://beverage-ledger-api-jfzo.onrender.com`. Ver §4.
 
 El plan completo de fases vive fuera del repositorio, en la máquina de quien lo escribió; no cuentes con poder leerlo.
 
@@ -234,7 +234,7 @@ Si una contraseña contiene `/ % @ :` hay que **URL-encodearla** o la conexión 
 
 ### Despliegue
 
-La API vive en **Render** (`https://beverage-ledger-api.onrender.com`) y el front en **Vercel**, descritos en `render.yaml`. Los secretos van marcados `sync: false`: Render los pide una vez en el panel y nunca tocan el repositorio.
+La API vive en **Render** (`https://beverage-ledger-api-jfzo.onrender.com`) y el front en **Vercel**, descritos en `render.yaml`. Los secretos van marcados `sync: false`: Render los pide una vez en el panel y nunca tocan el repositorio.
 
 Las migraciones corren en el `buildCommand`, no al arrancar: `migrate deploy` es idempotente y un fallo debe abortar el despliegue en vez de dejar una instancia en bucle de reinicio. El *pre-deploy hook* de Render, que es donde corresponderían, es de pago.
 
