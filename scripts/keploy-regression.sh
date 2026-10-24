@@ -5,7 +5,7 @@
 # between the two versions is a failed test.
 #
 # Shared by GitHub Actions and Jenkins. It needs Linux with eBPF, root for keploy
-# (KEPLOY_SUDO="sudo -E env PATH=$PATH" when the shell is not root), Node with
+# (KEPLOY_SUDO=sudo when the shell is not root), Node with
 # corepack, keploy on the PATH, and an empty Postgres in DATABASE_URL/DIRECT_URL.
 set -euo pipefail
 
@@ -29,6 +29,10 @@ export CI_OPERATOR_EMAIL="${CI_OPERATOR_EMAIL:-ci.operator@beverageledger.test}"
 git worktree add --detach "$base_dir" "$(git rev-parse "$base_ref")"
 trap 'git -C "$root" worktree remove --force "$base_dir" || true' EXIT
 
+# What the app needs, handed to keploy by name: sudo-rs, the sudo on current
+# Ubuntu runners, ignores -E, and the app would start without its database.
+keploy_env=(PATH="$PATH" DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" JWT_SECRET="$JWT_SECRET")
+
 echo "== Versión grabada: $(git -C "$base_dir" log -1 --format='%h %s')"
 (
   cd "$base_dir"
@@ -50,7 +54,7 @@ echo "== Versión grabada: $(git -C "$base_dir" log -1 --format='%h %s')"
 # keploy.yaml and the traffic script are the working tree's: the base may predate them.
 echo "== Grabando el tráfico de RF-01, 03, 06, 09, 29 y 30"
 cd "$base_dir"
-$sudo_prefix keploy record --config-path "$root" --path "$root" -c "node dist/main" \
+$sudo_prefix env "${keploy_env[@]}" keploy record --config-path "$root" --path "$root" -c "node dist/main" \
   > "$root/keploy-record.log" 2>&1 &
 recorder=$!
 cd "$root"
@@ -68,4 +72,4 @@ cd "$root"
 pnpm install --frozen-lockfile
 pnpm db:generate
 pnpm build
-$sudo_prefix keploy test -c "node dist/main"
+$sudo_prefix env "${keploy_env[@]}" keploy test -c "node dist/main"

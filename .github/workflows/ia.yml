@@ -66,7 +66,7 @@ jobs:
         # Through the environment, not inlined: the input is typed by a person.
         env:
           BASE: ${{ inputs.base || 'HEAD~1' }}
-        run: KEPLOY_SUDO="sudo -E env PATH=$PATH" bash scripts/keploy-regression.sh "$BASE"
+        run: KEPLOY_SUDO=sudo bash scripts/keploy-regression.sh "$BASE"
 
       - name: Guardar las pruebas, los mocks y el reporte
         if: always()
