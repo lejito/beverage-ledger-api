@@ -20,6 +20,7 @@ const THROTTLED_ROUTES = [
 ];
 const AUTH_BUDGET = 9;
 const AUTH_WINDOW_MS = 62_000;
+const THROTTLED_ATTEMPTS = 3;
 
 // A file and not a module variable: the global setup runs in another process
 // than the tests, and both draw from the same budget.
@@ -108,13 +109,28 @@ export async function call<T = unknown>(
   path: string,
   options: RequestOptions = {},
 ): Promise<ApiResponse<T>> {
-  const { apiUrl } = deployedApiEnv();
   const route = path.split('?')[0]!;
-
-  if (!options.unthrottled && THROTTLED_ROUTES.includes(route)) {
-    await takeAuthSlot(route);
+  if (options.unthrottled || !THROTTLED_ROUTES.includes(route)) {
+    return send<T>(method, path, options);
   }
 
+  // The budget only sees this job. Another one calling the same API from the same
+  // address (the next job, the web repo's suites) spends the same limit, so a 429
+  // waits out the window and tries again rather than failing the suite.
+  for (let attempt = 1; ; attempt++) {
+    await takeAuthSlot(route);
+    const response = await send<T>(method, path, options);
+    if (response.status !== 429 || attempt === THROTTLED_ATTEMPTS) return response;
+    spendAuthBudget(route);
+  }
+}
+
+async function send<T>(
+  method: string,
+  path: string,
+  options: RequestOptions,
+): Promise<ApiResponse<T>> {
+  const { apiUrl } = deployedApiEnv();
   const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (options.token) headers.Authorization = `Bearer ${options.token}`;
