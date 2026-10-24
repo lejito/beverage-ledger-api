@@ -103,6 +103,51 @@ pipeline {
             always { junit allowEmptyResults: true, testResults: 'reports/seguridad.xml' }
           }
         }
+
+        // Records the commit Jenkins built last (or the parent) and replays it
+        // against this one with Postgres mocked: a changed answer blocks the
+        // deploy. Keploy needs eBPF and root, so it runs in a privileged sibling
+        // container next to a throwaway Postgres, through the Docker socket the
+        // controller mounts; same procedure as Jenkinsfile.ia and ci.yml.
+        stage('Keploy (captura y reproducción)') {
+          environment {
+            LAB = "keploy-${env.BUILD_TAG.replaceAll('[^A-Za-z0-9_.-]', '-').toLowerCase()}"
+            KEPLOY_VERSION = 'v3.6.131'
+            BASE = "${env.GIT_PREVIOUS_COMMIT ?: 'HEAD~1'}"
+          }
+          steps {
+            sh '''
+              docker network create "$LAB"
+              docker run -d --name "$LAB-db" --network "$LAB" \
+                -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=beverage_ledger \
+                postgres:17-alpine
+            '''
+            sh '''
+              docker run --rm --privileged --pid=host --network "$LAB" \
+                -v /sys/kernel/debug:/sys/kernel/debug -v /sys/fs/bpf:/sys/fs/bpf \
+                --volumes-from beverage-ledger-jenkins -w "$WORKSPACE" \
+                -e BASE -e KEPLOY_VERSION -e COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+                -e DATABASE_URL="postgresql://postgres:postgres@$LAB-db:5432/beverage_ledger" \
+                -e DIRECT_URL="postgresql://postgres:postgres@$LAB-db:5432/beverage_ledger" \
+                node:22-bookworm bash -c '
+                  trap "chown -R 1000:1000 \\"$PWD\\"" EXIT
+                  set -e
+                  git config --global --add safe.directory "*"
+                  corepack enable
+                  curl -sSfL "https://github.com/keploy/keploy/releases/download/$KEPLOY_VERSION/keploy_linux_amd64.tar.gz" \
+                    | tar -xz -C /usr/local/bin keploy
+                  git cat-file -e "$BASE^{commit}" 2>/dev/null || BASE=HEAD~1
+                  bash scripts/keploy-regression.sh "$BASE"
+                '
+            '''
+          }
+          post {
+            always {
+              archiveArtifacts artifacts: 'keploy/**, keploy-record.log', allowEmptyArchive: true
+              sh 'docker rm -f "$LAB-db" >/dev/null 2>&1 || true; docker network rm "$LAB" >/dev/null 2>&1 || true'
+            }
+          }
+        }
       }
       post {
         always { archiveArtifacts artifacts: 'coverage/*/lcov.info', allowEmptyArchive: true }

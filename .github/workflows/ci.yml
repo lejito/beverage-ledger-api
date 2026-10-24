@@ -129,9 +129,81 @@ jobs:
       - name: Auditoría de dependencias
         run: pnpm audit --prod --audit-level high
 
+  # Records the version before this push (or the PR's base) and replays it
+  # against this commit with Postgres mocked: a changed answer blocks the deploy.
+  # Deterministic, unlike the model-driven suites, so it can gate. Nothing here
+  # touches Render or Supabase; the API runs on the runner.
+  keploy:
+    name: Pruebas de regresión · Keploy (captura y reproducción)
+    needs: security
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: beverage_ledger
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/beverage_ledger
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/beverage_ledger
+      CI_ADMIN_EMAIL: ci.admin@beverageledger.test
+      CI_MANAGER_EMAIL: ci.manager@beverageledger.test
+      CI_OPERATOR_EMAIL: ci.operator@beverageledger.test
+      KEPLOY_VERSION: v3.6.131
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Throwaway: the database dies with the runner, so the uploaded recordings
+      # never hold a credential that works anywhere.
+      - name: Credenciales de esta corrida
+        run: |
+          for name in JWT_SECRET CI_ADMIN_PASSWORD CI_MANAGER_PASSWORD CI_OPERATOR_PASSWORD; do
+            value="Ci-$(openssl rand -hex 24)-Kp1"
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
+      - uses: ./.github/actions/setup
+      - name: Instalar Keploy
+        run: |
+          curl -sSfL "https://github.com/keploy/keploy/releases/download/$KEPLOY_VERSION/keploy_linux_amd64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin keploy
+          keploy --version
+      # A push of several commits compares against what main had before it; a
+      # new branch, a re-run or a missing commit falls back to the parent.
+      - name: Grabar la versión anterior y reproducir contra este commit
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          base=HEAD~1
+          if [ "$EVENT" = pull_request ]; then
+            base="origin/$BASE_REF"
+          elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            base="$BEFORE"
+          fi
+          KEPLOY_SUDO="sudo -E env PATH=$PATH" bash scripts/keploy-regression.sh "$base"
+      - name: Guardar las pruebas, los mocks y el reporte
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: keploy
+          path: |
+            keploy
+            keploy-record.log
+          retention-days: 14
+
   quality:
     name: Calidad (SonarQube Cloud)
-    needs: security
+    needs: keploy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

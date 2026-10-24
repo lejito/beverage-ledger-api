@@ -1,0 +1,36 @@
+# Keploy: the API's HTTP calls recorded with the Postgres traffic behind them,
+# then replayed with the database mocked. scripts/keploy-traffic.mjs generates
+# the calls; the test sets land in keploy/, which CI uploads and git ignores.
+path: '.'
+command: 'node dist/main'
+test:
+  # Seconds the replay waits for the API to come up before the first request.
+  delay: 15
+  apiTimeout: 10
+  skipCoverage: true
+  ignoreOrdering: true
+  # What legitimately changes between a recording and its replay: signed
+  # tokens, the rotating refresh cookie and every timestamp.
+  globalNoise:
+    global:
+      body:
+        accessToken: []
+        expiresIn: []
+        timestamp: []
+        createdAt: []
+        updatedAt: []
+        lastLoginAt: []
+        uptimeSeconds: []
+        code: []
+        expiresAt: []
+      header:
+        Set-Cookie: []
+        Date: []
+        ETag: []
+        Etag: []
+        X-RateLimit-Remaining: []
+        X-RateLimit-Reset: []
+        X-RateLimit-Remaining-Auth: []
+        X-RateLimit-Reset-Auth: []
+        RateLimit-Remaining: []
+        RateLimit-Reset: []

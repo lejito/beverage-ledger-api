@@ -1,0 +1,73 @@
+// Keploy by hand, against any earlier version (BASE). The Jenkinsfile also runs it
+// on every build, where it gates the deploy. Same procedure as
+// .github/workflows/ia.yml.
+//
+// Keploy needs Linux with eBPF and root, which the Jenkins container has neither
+// of, so it runs in a privileged sibling container next to a throwaway Postgres,
+// both started through the Docker socket the controller mounts. Nothing here
+// touches Render or Supabase.
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    timeout(time: 45, unit: 'MINUTES')
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+  }
+
+  parameters {
+    string(name: 'BASE', defaultValue: 'HEAD~1', description: 'Versión que se graba, la que se compara contra este commit')
+  }
+
+  environment {
+    KEPLOY_VERSION = 'v3.6.131'
+    // One network and one database per build, removed in post.
+    LAB = "keploy-${env.BUILD_TAG.replaceAll('[^A-Za-z0-9_.-]', '-').toLowerCase()}"
+  }
+
+  stages {
+    stage('Keploy (captura y reproducción de tráfico)') {
+      steps {
+        sh '''
+          docker network create "$LAB"
+          docker run -d --name "$LAB-db" --network "$LAB" \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=beverage_ledger \
+            postgres:17-alpine
+        '''
+        // --volumes-from gives the sibling the workspace at the same path. It
+        // runs as root, so it hands the files back to jenkins (uid 1000) or
+        // cleanWs could not remove them.
+        sh '''
+          docker run --rm --privileged --pid=host --network "$LAB" \
+            -v /sys/kernel/debug:/sys/kernel/debug -v /sys/fs/bpf:/sys/fs/bpf \
+            --volumes-from beverage-ledger-jenkins -w "$WORKSPACE" \
+            -e BASE -e KEPLOY_VERSION -e COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+            -e DATABASE_URL="postgresql://postgres:postgres@$LAB-db:5432/beverage_ledger" \
+            -e DIRECT_URL="postgresql://postgres:postgres@$LAB-db:5432/beverage_ledger" \
+            node:22-bookworm bash -c '
+              trap "chown -R 1000:1000 \\"$PWD\\"" EXIT
+              set -e
+              git config --global --add safe.directory "*"
+              corepack enable
+              curl -sSfL "https://github.com/keploy/keploy/releases/download/$KEPLOY_VERSION/keploy_linux_amd64.tar.gz" \
+                | tar -xz -C /usr/local/bin keploy
+              bash scripts/keploy-regression.sh "$BASE"
+            '
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'keploy/**, keploy-record.log', allowEmptyArchive: true
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker rm -f "$LAB-db" >/dev/null 2>&1 || true; docker network rm "$LAB" >/dev/null 2>&1 || true'
+    }
+    cleanup { cleanWs() }
+  }
+}

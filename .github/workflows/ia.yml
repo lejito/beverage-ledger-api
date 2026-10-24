@@ -1,0 +1,79 @@
+name: Pruebas con IA
+
+# Keploy also runs in CI/CD on every push, where it gates the deploy. This one is
+# by hand only, to compare against any earlier version (`base`) or to regenerate
+# the evidence. Nothing here touches Render or Supabase.
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Versión que se graba (la que se compara contra este commit)
+        default: HEAD~1
+
+permissions:
+  contents: read
+
+jobs:
+  keploy:
+    name: Keploy (captura y reproducción de tráfico)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: beverage_ledger
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/beverage_ledger
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/beverage_ledger
+      CI_ADMIN_EMAIL: ci.admin@beverageledger.test
+      CI_MANAGER_EMAIL: ci.manager@beverageledger.test
+      CI_OPERATOR_EMAIL: ci.operator@beverageledger.test
+      KEPLOY_VERSION: v3.6.131
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Throwaway: the database dies with the runner. Fresh for every run, so the
+      # recordings this job uploads never hold a credential that works anywhere.
+      - name: Credenciales de esta corrida
+        run: |
+          for name in JWT_SECRET CI_ADMIN_PASSWORD CI_MANAGER_PASSWORD CI_OPERATOR_PASSWORD; do
+            value="Ci-$(openssl rand -hex 24)-Kp1"
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
+
+      - uses: ./.github/actions/setup
+
+      - name: Instalar Keploy
+        run: |
+          curl -sSfL "https://github.com/keploy/keploy/releases/download/$KEPLOY_VERSION/keploy_linux_amd64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin keploy
+          keploy --version
+
+      # Records the previous version and replays against this one: an answer
+      # that changed between them is a regression. The same script Jenkins runs.
+      - name: Grabar la versión anterior y reproducir contra este commit
+        # Through the environment, not inlined: the input is typed by a person.
+        env:
+          BASE: ${{ inputs.base || 'HEAD~1' }}
+        run: KEPLOY_SUDO="sudo -E env PATH=$PATH" bash scripts/keploy-regression.sh "$BASE"
+
+      - name: Guardar las pruebas, los mocks y el reporte
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: keploy
+          path: |
+            keploy
+            keploy-record.log
+          retention-days: 14
