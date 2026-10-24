@@ -80,6 +80,7 @@ describe('RF-01 - API de inicio de sesión', () => {
 
     expect(respuesta.status).toBe(401);
     expect(Object.keys(respuesta.body).sort()).toEqual([
+      'code',
       'error',
       'message',
       'path',

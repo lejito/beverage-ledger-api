@@ -29,11 +29,10 @@ describe('Cabeceras, CORS y errores de la API desplegada', () => {
     expect(JSON.stringify(respuesta.body)).not.toMatch(/stack|prisma|node_modules|at \w+ \(/i);
   });
 
-  // Pendiente · heurística 33: los errores no llevan un código que el usuario
-  // pueda citar al reportarlos. Se activa cuando el filtro global lo añada.
-  it.skip('Pendiente heurística 33 - un error lleva un código de referencia', async () => {
+  // Heurística 33: el código que la persona cita al reportar el error.
+  it('Caso 4 - un error lleva un código de referencia', async () => {
     const respuesta = await call<Record<string, unknown>>('GET', '/no-existe');
 
-    expect(respuesta.body).toHaveProperty('code');
+    expect(respuesta.body.code).toMatch(/^ERR-[0-9A-F]{8}$/);
   });
 });

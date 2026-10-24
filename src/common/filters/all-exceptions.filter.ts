@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { Prisma } from '../../generated/prisma/client';
 
@@ -15,7 +16,12 @@ export interface ErrorResponseBody {
   message: string | string[];
   path: string;
   timestamp: string;
+  /** What a person quotes when reporting the error; a server error logs it beside its stack. */
+  code: string;
 }
+
+/** Short enough to read out over the phone, random enough not to repeat in a day's logs. */
+export const errorReference = (): string => `ERR-${randomBytes(4).toString('hex').toUpperCase()}`;
 
 /** Gives every error a uniform shape and keeps internal detail off the wire. */
 @Catch()
@@ -30,6 +36,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     const { status, error, message } = this.describe(exception);
+    const code = errorReference();
 
     // Annotated as number: getStatus() returns number, and comparing it against
     // the HttpStatus enum is a type error.
@@ -37,7 +44,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (status >= serverErrorThreshold) {
       this.logger.error(
-        `${request.method} ${request.url} -> ${status}`,
+        `${code} ${request.method} ${request.url} -> ${status}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
@@ -48,6 +55,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message,
       path: request.url,
       timestamp: new Date().toISOString(),
+      code,
     };
 
     response.status(status).json(body);

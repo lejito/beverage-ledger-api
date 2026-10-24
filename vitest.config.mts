@@ -46,6 +46,7 @@ export default defineConfig({
       // only imports as a type never loads and would be missing from the report.
       // Mirrored by sonar.coverage.exclusions in sonar-project.properties.
       include: [
+        'src/common/filters/all-exceptions.filter.ts',
         'src/modules/audit/audit.service.ts',
         'src/modules/audit/repositories/audit.repository.ts',
         'src/modules/auth/credentials.service.ts',
