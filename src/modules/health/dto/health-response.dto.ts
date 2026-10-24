@@ -17,4 +17,11 @@ export class HealthResponseDto {
 
   @ApiProperty({ type: HealthDependenciesDto })
   dependencies!: HealthDependenciesDto;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Commit this instance serves; null outside Render',
+  })
+  commit!: string | null;
 }

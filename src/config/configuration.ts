@@ -26,6 +26,9 @@ export const configuration = () => {
 
     frontendUrl: env.FRONTEND_URL,
 
+    /** What /health reports, so CI can wait until Render serves what it tested. */
+    commit: env.RENDER_GIT_COMMIT ?? null,
+
     swagger: {
       enabled: env.SWAGGER_ENABLED,
     },

@@ -58,6 +58,9 @@ export const envSchema = z
 
     /** Organization new self-registered users join while org signup is deferred. */
 
+    /** Set by Render on every Git deploy: the commit this instance serves. */
+    RENDER_GIT_COMMIT: optional(z.string().min(1)),
+
     GOOGLE_CLIENT_ID: optional(z.string().min(1)),
     GOOGLE_CLIENT_SECRET: optional(z.string().min(1)),
     GOOGLE_CALLBACK_URL: optional(z.url()),
