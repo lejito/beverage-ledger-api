@@ -42,7 +42,7 @@ pipeline {
           docker run --rm --privileged --pid=host --network "$LAB" \
             -v /sys/kernel/debug:/sys/kernel/debug -v /sys/fs/bpf:/sys/fs/bpf \
             --volumes-from beverage-ledger-jenkins -w "$WORKSPACE" \
-            -e BASE -e KEPLOY_VERSION -e COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+            -e BASE -e KEPLOY_VERSION -e CI=true -e COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
             -e DATABASE_URL="postgresql://postgres:postgres@$LAB-db:5432/beverage_ledger" \
             -e DIRECT_URL="postgresql://postgres:postgres@$LAB-db:5432/beverage_ledger" \
             node:22-bookworm bash -c '
