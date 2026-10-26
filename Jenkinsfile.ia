@@ -11,6 +11,8 @@ pipeline {
 
   options {
     timestamps()
+    // Keploy, Vitest, Cypress and pnpm colour their output; this turns the codes into colour.
+    ansiColor('xterm')
     timeout(time: 45, unit: 'MINUTES')
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '10'))

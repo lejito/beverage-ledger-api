@@ -13,6 +13,8 @@ pipeline {
 
   options {
     timestamps()
+    // Keploy, Vitest, Cypress and pnpm colour their output; this turns the codes into colour.
+    ansiColor('xterm')
     // The deployed-API suites pace their logins to the API's rate limit, and may
     // wait for the web job to release the render-api lock first.
     timeout(time: 60, unit: 'MINUTES')
