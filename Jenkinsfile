@@ -33,6 +33,9 @@ pipeline {
     // The deployed API the API and security suites call. The same credential
     // the web job builds against.
     API_URL = credentials('next-public-api-url')
+    // One login budget for this job and the web job, on the shared Jenkins
+    // volume: both call the same API, which counts them against one limit.
+    AUTH_BUDGET_FILE = '/var/jenkins_home/.cache/beverage-ledger/auth-throttle.json'
   }
 
   stages {

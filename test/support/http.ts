@@ -23,14 +23,13 @@ const AUTH_WINDOW_MS = 62_000;
 const THROTTLED_ATTEMPTS = 3;
 
 // A file and not a module variable: the global setup runs in another process
-// than the tests, and both draw from the same budget.
-const BUDGET_FILE = join(
-  process.cwd(),
-  'node_modules',
-  '.cache',
-  'beverage-ledger',
-  'auth-throttle.json',
-);
+// than the tests, and both draw from the same budget. AUTH_BUDGET_FILE lets a
+// CI that runs this and the web suites at once point both at one file, keyed by
+// the full path as the web's is: the API counts both against the same limit.
+const BUDGET_FILE =
+  process.env.AUTH_BUDGET_FILE ||
+  join(process.cwd(), 'node_modules', '.cache', 'beverage-ledger', 'auth-throttle.json');
+const budgetKey = (route: string) => `${API_PREFIX}${route}`;
 
 type Budget = Record<string, number[]>;
 
@@ -51,10 +50,10 @@ async function takeAuthSlot(route: string): Promise<void> {
   for (;;) {
     const now = Date.now();
     const budget = readBudget();
-    const recent = (budget[route] ?? []).filter((at) => now - at < AUTH_WINDOW_MS);
+    const recent = (budget[budgetKey(route)] ?? []).filter((at) => now - at < AUTH_WINDOW_MS);
 
     if (recent.length < AUTH_BUDGET) {
-      budget[route] = [...recent, now];
+      budget[budgetKey(route)] = [...recent, now];
       writeBudget(budget);
       return;
     }
@@ -66,7 +65,7 @@ async function takeAuthSlot(route: string): Promise<void> {
 /** Marks a route's budget as spent, after a test that exhausted the real limit. */
 export function spendAuthBudget(route: string): void {
   const budget = readBudget();
-  budget[route] = Array.from({ length: AUTH_BUDGET }, () => Date.now());
+  budget[budgetKey(route)] = Array.from({ length: AUTH_BUDGET }, () => Date.now());
   writeBudget(budget);
 }
 
